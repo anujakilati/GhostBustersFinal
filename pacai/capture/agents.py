@@ -126,6 +126,8 @@ def _extract_baseline_offensive_features(
     agent_actions = state.get_agent_actions(agent.agent_index)
     if (len(agent_actions) > 1):
         features['reverse'] = int(action == state.get_reverse_action(agent_actions[-2]))
+    else:
+        features['reverse'] = 0
 
     current_position = state.get_agent_position(agent.agent_index)
     if (current_position is None):
@@ -133,22 +135,28 @@ def _extract_baseline_offensive_features(
         return features
 
     food_positions = state.get_food(agent_index = agent.agent_index)
-    if (len(food_positions) > 0):
-        food_distances = [agent._distances.get_distance(current_position, food_position) for food_position in food_positions]
-        features['distance_to_food'] = min(distance for distance in food_distances if (distance is not None))
+    food_list = food_positions.as_list()
+    if (len(food_list) > 0):
+        food_distances = [agent._distances.get_distance(current_position, f) for f in food_list if agent._distances.get_distance(current_position, f) is not None]
+        features['distance_to_food'] = min(food_distances) if food_distances else 9999 
     else:
         # There is no food left, give a large score.
-        features['distance_to_food'] = -100000
+        features['distance_to_food'] = 9999
 
     ghost_positions = state.get_nonscared_opponent_positions(agent_index = agent.agent_index)
     if (len(ghost_positions) > 0):
-        ghost_distances = [agent._distances.get_distance(current_position, ghost_position) for ghost_position in ghost_positions.values()]
-        features['distance_to_ghost'] = min(distance for distance in ghost_distances if (distance is not None))
-        if (features['distance_to_ghost'] > GHOST_IGNORE_RANGE):
-            features['distance_to_ghost'] = 1000
+        ghost_distances = [agent._distances.get_distance(current_position, g) for g in ghost_positions.values() if agent._distances.get_distance(current_position, g) is not None]
 
-        features['distance_to_ghost_squared'] = features['distance_to_ghost'] ** 2
+        if len(ghost_distances) == 0:
+            features['distance_to_ghost'] = 1000
+            features['distance_to_ghost_squared'] = 1000000
+        else:
+            d = min(ghost_distances)
+            features['distance_to_ghost'] = d if d <= GHOST_IGNORE_RANGE else 1000
+            features['distance_to_ghost_squared'] = features['distance_to_ghost'] ** 2
+
     else:
-        features['distance_to_ghost'] = 0
+        features['distance_to_ghost'] = 1000
+        features['distance_to_ghost_squared'] = 1000000 
 
     return features
