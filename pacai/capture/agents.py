@@ -1,70 +1,145 @@
 import typing
 
 import pacai.agents.greedy
+import pacai.capture.gamestate
 import pacai.core.action
 import pacai.core.agent
-import pacai.core.gamestate
+import pacai.core.agentinfo
+import pacai.core.board
 import pacai.core.features
+import pacai.core.gamestate
+import pacai.pacman.board
 import pacai.search.distance
 
 GHOST_IGNORE_RANGE: float = 2.5
+
+
+def create_team() -> list[pacai.core.agentinfo.AgentInfo]:
+    """
+    Return the agent information used to create a capture team.
+
+    We use one OffensiveAgent and one DefensiveAgent.
+    Using __name__ keeps things working even if the file is renamed
+    by the tournament harness.
+    """
+    offensive_info = pacai.core.agentinfo.AgentInfo(
+        name = f"{__name__}.OffensiveAgent"
+    )
+    defensive_info = pacai.core.agentinfo.AgentInfo(
+        name = f"{__name__}.DefensiveAgent"
+    )
+
+    return [offensive_info, defensive_info]
+
 
 class DefensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
     """
     A capture agent that prioritizes defending its own territory.
     """
 
-    def __init__(self,
+    def __init__(
+            self,
             override_weights: dict[str, float] | None = None,
             **kwargs: typing.Any) -> None:
-        kwargs['feature_extractor_func'] = _extract_baseline_defensive_features
+
+        kwargs['feature_extractor_func'] = _extract_defensive_features
         super().__init__(**kwargs)
 
-        self._distances: pacai.search.distance.DistancePreComputer = pacai.search.distance.DistancePreComputer()
-        """ Precompute distances. """
+        self._distances: pacai.search.distance.DistancePreComputer = (
+            pacai.search.distance.DistancePreComputer()
+        )
 
-        # Set base weights.
+        # Base defensive weights.
         self.weights['on_home_side'] = 100.0
         self.weights['stopped'] = -100.0
-        self.weights['reverse'] = -2.0
+        self.weights['reverse'] = -0.5
         self.weights['num_invaders'] = -1000.0
-        self.weights['distance_to_invader'] = -10.0
+        self.weights['distance_to_invader'] = -40.0
 
-        if (override_weights is None):
+        # Patrol toward the center line when no invaders are visible.
+        self.weights['distance_to_home_center'] = -3.0
+
+        # When scared, prefer to increase distance from invaders.
+        self.weights['scared_distance_to_invader'] = 25.0
+
+        if override_weights is None:
             override_weights = {}
 
         for (key, weight) in override_weights.items():
             self.weights[key] = weight
 
     def game_start(self, initial_state: pacai.core.gamestate.GameState) -> None:
+        """
+        Precompute distances for this board at the start of the game.
+        """
         self._distances.compute(initial_state.board)
+
 
 class OffensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
     """
-    A capture agent that prioritizes defending its own territory.
+    A capture agent that prioritizes offense on the opponent side.
     """
 
-    def __init__(self,
+    def __init__(
+            self,
             override_weights: dict[str, float] | None = None,
             **kwargs: typing.Any) -> None:
-        kwargs['feature_extractor_func'] = _extract_baseline_offensive_features
+
+        kwargs['feature_extractor_func'] = _extract_offensive_features
         super().__init__(**kwargs)
 
-        self._distances: pacai.search.distance.DistancePreComputer = pacai.search.distance.DistancePreComputer()
-        """ Precompute distances. """
+        self._distances: pacai.search.distance.DistancePreComputer = (
+            pacai.search.distance.DistancePreComputer()
+        )
 
-        # Set base weights.
-        self.weights['score'] = 100.0
-        self.weights['distance_to_food'] = -1.0
+        # Base offensive weights.
 
-        if (override_weights is None):
+        # Care a lot about overall score.
+        self.weights['score'] = 125.0
+
+        # Smart food choice (closer food is strongly preferred).
+        self.weights['distance_to_food'] = -4.5
+
+        # Movement smoothness.
+        self.weights['stopped'] = -50.0
+        # Allow backtracking for safety.
+        self.weights['reverse'] = -0.5
+
+        # Ghost avoidance.
+        # Positive weight means larger distance is better.
+        self.weights['distance_to_ghost'] = 4.0
+        # Extra penalty when very close (moderate spike).
+        self.weights['distance_to_ghost_squared'] = -0.25
+
+        # Capsule logic.
+        self.weights['distance_to_capsule'] = -2.0
+        # Extra pull toward capsule when ghost is close.
+        self.weights['escape_capsule_distance'] = -9.0
+
+        # Returning home when ghosts are close.
+        self.weights['distance_to_home_if_ghost_close'] = -9.0
+
+        # In general, being on home side is slightly bad for an offensive agent.
+        self.weights['on_home_side'] = -2.0
+
+        # Prefer food that is quick to grab and quick to return.
+        self.weights['food_return_cost'] = -2.5
+
+        # Additional pressure when multiple ghosts are close.
+        self.weights['ghosts_close'] = -35.0
+
+        if override_weights is None:
             override_weights = {}
 
         for (key, weight) in override_weights.items():
             self.weights[key] = weight
 
     def game_start(self, initial_state: pacai.core.gamestate.GameState) -> None:
+        """
+        Precompute distances for this board at the start of the game.
+        """
         self._distances.compute(initial_state.board)
+
 
 def _extract_baseline_defensive_features(
         state: pacai.core.gamestate.GameState,
