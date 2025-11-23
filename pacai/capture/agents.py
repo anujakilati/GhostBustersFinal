@@ -167,15 +167,29 @@ def _extract_baseline_defensive_features(
     agent_actions = state.get_agent_actions(agent.agent_index)
     if (len(agent_actions) > 1):
         features['reverse'] = int(action == state.get_reverse_action(agent_actions[-2]))
+    else:
+        features['reverse'] = 0
 
     # We don't like any invaders on our side.
     invader_positions = state.get_invader_positions(agent_index = agent.agent_index)
     features['num_invaders'] = len(invader_positions)
 
     # Hunt down the closest invader!
-    if (len(invader_positions) > 0):
-        invader_distances = [agent._distances.get_distance(current_position, invader_position) for invader_position in invader_positions.values()]
-        features['distance_to_invader'] = min(distance for distance in invader_distances if (distance is not None))
+    if invader_positions:
+        distances: list[int] = []
+        for inv_pos in invader_positions.values():
+            d = agent._distances.get_distance(current_position, inv_pos)
+            if d is not None:
+                distances.append(d)
+
+        if distances:
+            features['distance_to_invader'] = min(distances)
+        else:
+            # If no distances could be computed, fall back to 0.
+            features['distance_to_invader'] = 0
+    else:
+        # No invaders right now.
+        features['distance_to_invader'] = 0
 
     return features
 
