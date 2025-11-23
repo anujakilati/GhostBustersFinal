@@ -191,6 +191,33 @@ def _extract_baseline_defensive_features(
         # No invaders right now.
         features['distance_to_invader'] = 0
 
+    # patrol if no invaders
+    # compute distance to center of home territory
+    board = state.board
+    mid_x = board.width // 2
+    # if red agent, home is left side; if blue, home is right side
+    if state.is_red(agent.agent_index):
+        home_center = (mid_x - 1, current_position[1])
+    else:
+        home_center = (mid_x + 1, current_position[1])
+
+    d_center = agent._distances.get_distance(current_position, home_center)
+    features['distance_to_home_center'] = d_center if d_center is not None else 0
+
+    if state.get_agent_state(agent.agent_index).is_scared() and invader_positions:
+        scared_distances: list[int] = []
+        for inv_pos in invader_positions.values():
+            d = agent._distances.get_distance(current_position, inv_pos)
+            if d is not None:
+                scared_distances.append(d)
+
+        if scared_distances:
+            features['scared_distance_to_invader'] = min(scared_distances)
+        else:
+            features['scared_distance_to_invader'] = 0
+    else:
+        features['scared_distance_to_invader'] = 0
+
     return features
 
 def _extract_baseline_offensive_features(
