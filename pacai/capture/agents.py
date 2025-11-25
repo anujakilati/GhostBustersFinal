@@ -242,6 +242,10 @@ def _extract_baseline_offensive_features(
     else:
         features['reverse'] = 0
 
+    current_position = state.get_agent_position(agent.agent_index) 
+    if (current_position is None): # We are dead and waiting to respawn. 
+        return features
+
     features['on_home_side'] = int(state.is_ghost(agent_index = agent.agent_index))
 
     food_positions = state.get_food(agent_index = agent.agent_index)
