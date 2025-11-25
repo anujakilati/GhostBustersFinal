@@ -96,10 +96,8 @@ class OffensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
 
         # Care a lot about overall score.
         self.weights['score'] = 125.0
-
         # Smart food choice (closer food is strongly preferred).
         self.weights['distance_to_food'] = -4.5
-
         # Movement smoothness.
         self.weights['stopped'] = -50.0
         # Allow backtracking for safety.
@@ -107,17 +105,15 @@ class OffensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
 
         # Ghost avoidance.
         # Positive weight means larger distance is better.
-        self.weights['distance_to_ghost'] = 4.0
+        self.weights['ghost_to_close'] = 50.0
         # Extra penalty when very close (moderate spike).
-        self.weights['distance_to_ghost_squared'] = -0.25
+        self.weights['distance_to_ghost_squared'] = -1.5
+        self.weights['distance_to_home_if_ghost_close'] = -9.0
 
         # Capsule logic.
         self.weights['distance_to_capsule'] = -2.0
         # Extra pull toward capsule when ghost is close.
         self.weights['escape_capsule_distance'] = -9.0
-
-        # Returning home when ghosts are close.
-        self.weights['distance_to_home_if_ghost_close'] = -9.0
 
         # In general, being on home side is slightly bad for an offensive agent.
         self.weights['on_home_side'] = -2.0
@@ -264,16 +260,18 @@ def _extract_baseline_offensive_features(
     if (len(ghost_positions) > 0):
         ghost_distances = [agent._distances.get_distance(current_position, g) for g in ghost_positions.values() if agent._distances.get_distance(current_position, g) is not None]
 
-        if len(ghost_distances) == 0:
-            features['distance_to_ghost'] = 1000
-            features['distance_to_ghost_squared'] = 1000000
-        else:
+        if ghost_distances:
             d = min(ghost_distances)
-            features['distance_to_ghost'] = d if d <= GHOST_IGNORE_RANGE else 1000
-            features['distance_to_ghost_squared'] = features['distance_to_ghost'] ** 2
+            features["distance_to_ghost_squared"] = d ** 2
+            features["ghost_too_close"] = 1 if d < GHOST_IGNORE_RANGE else 0
+        else:
+            features["distance_to_ghost_squared"] = 0
+            features["ghost_too_close"] = 0
+            features["distance_to_home_if_ghost_close"] = 0
 
     else:
-        features['distance_to_ghost'] = 1000
-        features['distance_to_ghost_squared'] = 1000000 
+        features["distance_to_ghost_squared"] = 0
+        features["ghost_too_close"] = 0
+        features["distance_to_home_if_ghost_close"] = 0
 
     return features
