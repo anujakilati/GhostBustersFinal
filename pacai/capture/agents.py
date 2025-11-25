@@ -242,10 +242,7 @@ def _extract_baseline_offensive_features(
     else:
         features['reverse'] = 0
 
-    current_position = state.get_agent_position(agent.agent_index)
-    if (current_position is None):
-        # We are dead and waiting to respawn.
-        return features
+    features['on_home_side'] = int(state.is_ghost(agent_index = agent.agent_index))
 
     food_positions = state.get_food(agent_index = agent.agent_index)
     food_list = list(food_positions)  # CHANGED: convert set to list (was .as_list())
@@ -258,7 +255,7 @@ def _extract_baseline_offensive_features(
             features['reverse'] = 0
             features['stopped'] = 0
             features["ghost_too_close"] = 0
-            eatures["distance_to_home_if_ghost_close"] = 0
+            features["distance_to_home_if_ghost_close"] = 0
             features["distance_to_ghost_squared"] = 0
     else:
         # There is no food left, give a large score.
@@ -272,6 +269,7 @@ def _extract_baseline_offensive_features(
             d = min(ghost_distances)
             features["distance_to_ghost_squared"] = d ** 2
             features["ghost_too_close"] = 1 if d < GHOST_IGNORE_RANGE else 0
+            features["distance_to_home_if_ghost_close"] = 0 if d >= GHOST_IGNORE_RANGE else d
         else:
             features["distance_to_ghost_squared"] = 0
             features["ghost_too_close"] = 0
