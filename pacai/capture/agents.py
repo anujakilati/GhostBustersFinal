@@ -189,17 +189,20 @@ def _extract_baseline_defensive_features(
 
     # patrol if no invaders
     # compute distance to center of home territory
+    # Determine which x-column to patrol
     board = state.board
     mid_x = board.width // 2
-    # if red agent, home is left side; if blue, home is right side
-    # Even agent indexes (modifier -1) are the red team on the left; odds are blue on the right.
-    if state._team_modifier(agent.agent_index) == -1:  # CHANGED: replace missing is_red with team modifier
-        home_center = pacai.core.board.Position(current_position.row, mid_x - 1)  # CHANGED: build Position not tuple
-    else:
-        home_center = pacai.core.board.Position(current_position.row, mid_x + 1)  # CHANGED: build Position not tuple
 
-    d_center = agent._distances.get_distance(current_position, home_center)
-    features['distance_to_home_center'] = d_center if d_center is not None else 0
+    # red team is left (modifier -1), blue is right
+    if state._team_modifier(agent.agent_index) == -1:
+        patrol_col = mid_x - 1
+    else:
+        patrol_col = mid_x + 1
+
+    # choose the vertical midpoint (row)
+    patrol_row = board.height // 2
+
+    home_center = pacai.core.board.Position(patrol_row, patrol_col)
 
     if state.is_scared(agent.agent_index) and invader_positions:  # CHANGED: use is_scared (get_agent_state missing)
         scared_distances: list[int] = []
