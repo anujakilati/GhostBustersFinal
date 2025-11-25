@@ -105,7 +105,7 @@ class OffensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
 
         # Ghost avoidance.
         # Positive weight means larger distance is better.
-        self.weights['ghost_to_close'] = 50.0
+        self.weights['ghost_too_close'] = 50.0
         # Extra penalty when very close (moderate spike).
         self.weights['distance_to_ghost_squared'] = -1.5
         self.weights['distance_to_home_if_ghost_close'] = -9.0
@@ -122,7 +122,7 @@ class OffensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
         self.weights['food_return_cost'] = -2.5
 
         # Additional pressure when multiple ghosts are close.
-        self.weights['ghosts_close'] = -35.0
+        self.weights['ghost_too_close'] = -35.0
 
         if override_weights is None:
             override_weights = {}
