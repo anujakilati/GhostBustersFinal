@@ -42,7 +42,7 @@ class DefensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
             override_weights: dict[str, float] | None = None,
             **kwargs: typing.Any) -> None:
 
-        kwargs['feature_extractor_func'] = _extract_defensive_features
+        kwargs['feature_extractor_func'] = _extract_baseline_defensive_features
         super().__init__(**kwargs)
 
         self._distances: pacai.search.distance.DistancePreComputer = (
@@ -85,7 +85,7 @@ class OffensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
             override_weights: dict[str, float] | None = None,
             **kwargs: typing.Any) -> None:
 
-        kwargs['feature_extractor_func'] = _extract_offensive_features
+        kwargs['feature_extractor_func'] = _extract_baseline_offensive_features
         super().__init__(**kwargs)
 
         self._distances: pacai.search.distance.DistancePreComputer = (
@@ -196,15 +196,16 @@ def _extract_baseline_defensive_features(
     board = state.board
     mid_x = board.width // 2
     # if red agent, home is left side; if blue, home is right side
-    if state.is_red(agent.agent_index):
-        home_center = (mid_x - 1, current_position[1])
+    # Even agent indexes (modifier -1) are the red team on the left; odds are blue on the right.
+    if state._team_modifier(agent.agent_index) == -1:  # CHANGED: replace missing is_red with team modifier
+        home_center = pacai.core.board.Position(current_position.row, mid_x - 1)  # CHANGED: build Position not tuple
     else:
-        home_center = (mid_x + 1, current_position[1])
+        home_center = pacai.core.board.Position(current_position.row, mid_x + 1)  # CHANGED: build Position not tuple
 
     d_center = agent._distances.get_distance(current_position, home_center)
     features['distance_to_home_center'] = d_center if d_center is not None else 0
 
-    if state.get_agent_state(agent.agent_index).is_scared() and invader_positions:
+    if state.is_scared(agent.agent_index) and invader_positions:  # CHANGED: use is_scared (get_agent_state missing)
         scared_distances: list[int] = []
         for inv_pos in invader_positions.values():
             d = agent._distances.get_distance(current_position, inv_pos)
@@ -251,7 +252,7 @@ def _extract_baseline_offensive_features(
         return features
 
     food_positions = state.get_food(agent_index = agent.agent_index)
-    food_list = food_positions.as_list()
+    food_list = list(food_positions)  # CHANGED: convert set to list (was .as_list())
     if (len(food_list) > 0):
         food_distances = [agent._distances.get_distance(current_position, f) for f in food_list if agent._distances.get_distance(current_position, f) is not None]
         features['distance_to_food'] = min(food_distances) if food_distances else 9999 
