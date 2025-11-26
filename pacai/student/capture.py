@@ -295,7 +295,7 @@ def _extract_baseline_offensive_features(
     else:
         features['reverse'] = 0
 
-    current_position = state.get_agent_position(agent.agent_index) 
+    current_position = state.get_agent_position(agent.agent_index)
     if (current_position is None):
         return features
 
@@ -305,7 +305,11 @@ def _extract_baseline_offensive_features(
     food_list = list(food_positions)
     features['last_food'] = int(len(food_list) == 1)  # CHANGED: reward grabbing the final pellet
     if (len(food_list) > 0):
-        food_distances = [agent._distances.get_distance(current_position, f) for f in food_list if agent._distances.get_distance(current_position, f) is not None]
+        food_distances = [
+            agent._distances.get_distance(current_position, f)
+            for f in food_list
+            if agent._distances.get_distance(current_position, f) is not None
+        ]
         min_food_dist = min(food_distances) if food_distances else 9999
         features['distance_to_food'] = min_food_dist
         if len(food_list) == 1:
@@ -321,7 +325,11 @@ def _extract_baseline_offensive_features(
 
     ghost_positions = state.get_nonscared_opponent_positions(agent_index = agent.agent_index)
     if (len(ghost_positions) > 0):
-        ghost_distances = [agent._distances.get_distance(current_position, g) for g in ghost_positions.values() if agent._distances.get_distance(current_position, g) is not None]
+        ghost_distances: list[int] = []
+        for g in ghost_positions.values():
+            d = agent._distances.get_distance(current_position, g)
+            if d is not None:
+                ghost_distances.append(d)
 
         if ghost_distances:
             d = min(ghost_distances)
