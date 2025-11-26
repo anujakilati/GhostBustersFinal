@@ -156,7 +156,6 @@ class OffensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
         if (self._last_food_count is None):
             self._last_food_count = total_targets
         elif (total_targets < self._last_food_count):
-            print(f"[Offense] Food remaining: {total_targets}")
             self._last_food_count = total_targets
 
         # If exactly one edible target remains, log it and greedily move toward it.
@@ -204,7 +203,6 @@ def _extract_baseline_defensive_features(
 
     current_position = state.get_agent_position(agent.agent_index)
     if (current_position is None):
-        # We are dead and waiting to respawn.
         return features
 
     # Note the side of the board we are on.
@@ -297,8 +295,8 @@ def _extract_baseline_offensive_features(
     else:
         features['reverse'] = 0
 
-    current_position = state.get_agent_position(agent.agent_index) 
-    if (current_position is None): # We are dead and waiting to respawn. 
+    current_position = state.get_agent_position(agent.agent_index)
+    if (current_position is None):
         return features
 
     features['on_home_side'] = int(state.is_ghost(agent_index = agent.agent_index))
@@ -307,7 +305,10 @@ def _extract_baseline_offensive_features(
     food_list = list(food_positions)  # CHANGED: convert set to list (was .as_list())
     features['last_food'] = int(len(food_list) == 1)  # CHANGED: reward grabbing the final pellet
     if (len(food_list) > 0):
-        food_distances = [agent._distances.get_distance(current_position, f) for f in food_list if agent._distances.get_distance(current_position, f) is not None]
+        food_distances = []
+        for f in food_list:
+            if agent._distances.get_distance(current_position, f) is not None:
+                food_distances.append(agent._distances.get_distance(current_position, f))
         min_food_dist = min(food_distances) if food_distances else 9999
         features['distance_to_food'] = min_food_dist
         if len(food_list) == 1:
@@ -323,7 +324,10 @@ def _extract_baseline_offensive_features(
 
     ghost_positions = state.get_nonscared_opponent_positions(agent_index = agent.agent_index)
     if (len(ghost_positions) > 0):
-        ghost_distances = [agent._distances.get_distance(current_position, g) for g in ghost_positions.values() if agent._distances.get_distance(current_position, g) is not None]
+        ghost_distances = []
+        for g in ghost_positions.values():
+            if agent._distances.get_distance(current_position, g) is not None:
+                ghost_distances.append(agent._distances.get_distance(current_position, g))
 
         if ghost_distances:
             d = min(ghost_distances)
