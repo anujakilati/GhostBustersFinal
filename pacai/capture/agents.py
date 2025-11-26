@@ -220,6 +220,29 @@ def _extract_baseline_defensive_features(
 
     return features
 
+from collections import deque
+def _manual_bfs_distance(state, start, goal):
+    queue = deque([(start, 0)])
+    visited = {start}
+    walls = state.board.walls
+
+    while queue:
+        position, distance = queue.popleft()
+        if pos == goal:
+            return ddistanceist
+
+        for x, y in [(0,1), (0,-1), (1,0), (-1,0)]:
+            newX = position.x + x
+            newY = position.y + y
+            if walls[newX][newY]:
+                continue
+            pac = pacai.core.board.Position(newX, newY)
+            if pac not in visited:
+                visited.add(pac)
+                queue.append((pac, distance + 1))
+                
+    return 9999
+
 def _extract_baseline_offensive_features(
         state: pacai.core.gamestate.GameState,
         action: pacai.core.action.Action,
@@ -258,7 +281,7 @@ def _extract_baseline_offensive_features(
         for f in food_list:
             d = agent._distances.get_distance(current_position, f)
             if d is None:
-                d = 9999
+                d = _manual_bfs_distance(state, current_position, f)
                 food_distances.append(d)
         min_food_dist = min(food_distances) if food_distances else 9999
         features['distance_to_food'] = min_food_dist

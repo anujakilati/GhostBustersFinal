@@ -91,6 +91,7 @@ class OffensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
         self._distances: pacai.search.distance.DistancePreComputer = (
             pacai.search.distance.DistancePreComputer()
         )
+        self._last_food_count: int | None = None
 
         # Base offensive weights.
 
@@ -138,6 +139,57 @@ class OffensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
         Precompute distances for this board at the start of the game.
         """
         self._distances.compute(initial_state.board)
+        self._last_food_count = None
+
+    def get_action(self, state: pacai.core.gamestate.GameState) -> pacai.core.action.Action:
+        """
+        Log food/capsule counts once per real turn (not per successor).
+        """
+        food_count = len(state.get_food(agent_index = self.agent_index))
+        # Count only opponent-side capsules.
+        capsule_count = 0
+        for cap_pos in state.board.get_marker_positions(pacai.pacman.board.MARKER_CAPSULE):
+            if (state._team_side(position = cap_pos) != state._team_modifier(agent_index = self.agent_index)):
+                capsule_count += 1
+
+        total_targets = food_count + capsule_count
+        if (self._last_food_count is None):
+            self._last_food_count = total_targets
+        elif (total_targets < self._last_food_count):
+            print(f"[Offense] Food remaining: {total_targets}")
+            self._last_food_count = total_targets
+
+        # If exactly one edible target remains, log it and greedily move toward it.
+        remaining_food = state.get_food(agent_index = self.agent_index)
+        if (total_targets == 1) and (len(remaining_food) == 1):
+            only_food = next(iter(remaining_food))
+            print(f"[Offense] Last food at: {only_food}")
+
+            legal_actions = state.get_legal_actions()
+            if (pacai.core.action.STOP in legal_actions and len(legal_actions) > 1):
+                legal_actions.remove(pacai.core.action.STOP)
+
+            best_actions: list[pacai.core.action.Action] = []
+            best_distance: int | None = None
+
+            for action in legal_actions:
+                succ = state.generate_successor(action, self.rng)
+                succ_pos = succ.get_agent_position(self.agent_index)
+                if succ_pos is None:
+                    continue
+                d = self._distances.get_distance(succ_pos, only_food)
+                if d is None:
+                    continue
+                if (best_distance is None) or (d < best_distance):
+                    best_distance = d
+                    best_actions = [action]
+                elif d == best_distance:
+                    best_actions.append(action)
+
+            if best_actions:
+                return self.rng.choice(best_actions)
+
+        return super().get_action(state)
 
 
 def _extract_baseline_defensive_features(
