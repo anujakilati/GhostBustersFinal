@@ -156,14 +156,12 @@ class OffensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
         if (self._last_food_count is None):
             self._last_food_count = total_targets
         elif (total_targets < self._last_food_count):
-            print(f"[Offense] Food remaining: {total_targets}")
             self._last_food_count = total_targets
 
         # If exactly one edible target remains, log it and greedily move toward it.
         remaining_food = state.get_food(agent_index = self.agent_index)
         if (total_targets == 1) and (len(remaining_food) == 1):
             only_food = next(iter(remaining_food))
-            print(f"[Offense] Last food at: {only_food}")
 
             legal_actions = state.get_legal_actions()
             if (pacai.core.action.STOP in legal_actions and len(legal_actions) > 1):
@@ -298,13 +296,13 @@ def _extract_baseline_offensive_features(
         features['reverse'] = 0
 
     current_position = state.get_agent_position(agent.agent_index) 
-    if (current_position is None): # We are dead and waiting to respawn. 
+    if (current_position is None):
         return features
 
     features['on_home_side'] = int(state.is_ghost(agent_index = agent.agent_index))
 
     food_positions = state.get_food(agent_index = agent.agent_index)
-    food_list = list(food_positions)  # CHANGED: convert set to list (was .as_list())
+    food_list = list(food_positions)
     features['last_food'] = int(len(food_list) == 1)  # CHANGED: reward grabbing the final pellet
     if (len(food_list) > 0):
         food_distances = [agent._distances.get_distance(current_position, f) for f in food_list if agent._distances.get_distance(current_position, f) is not None]
