@@ -249,11 +249,11 @@ def _extract_baseline_offensive_features(
     features['num_food'] = len(food_list)
 
     if food_list:
-        food_distances = [
-            agent._distances.get_distance(current_position, f)
-            for f in food_list
-            if agent._distances.get_distance(current_position, f) is not None
-        ]
+        food_distances = []
+        for f in food_list:
+            d = agent._distances.get_distance(current_position, f)
+            if d is not None:
+                food_distances.append(d)
         features['distance_to_food'] = min(food_distances) if food_distances else 0
     else:
         # No food left; treat distance_to_food as 0 (doesn't matter anymore).
