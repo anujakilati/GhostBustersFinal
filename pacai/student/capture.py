@@ -5,13 +5,11 @@ import pacai.capture.gamestate
 import pacai.core.action
 import pacai.core.agent
 import pacai.core.agentinfo
-import pacai.core.board
 import pacai.core.features
 import pacai.core.gamestate
-import pacai.pacman.board
 import pacai.search.distance
 
-GHOST_IGNORE_RANGE: float = 2.5
+GHOST_IGNORE_RANGE: float = 3.0
 
 
 def create_team() -> list[pacai.core.agentinfo.AgentInfo]:
@@ -23,10 +21,10 @@ def create_team() -> list[pacai.core.agentinfo.AgentInfo]:
     by the tournament harness.
     """
     offensive_info = pacai.core.agentinfo.AgentInfo(
-        name = f"{__name__}.OffensiveAgent"
+        name=f"{__name__}.OffensiveAgent"
     )
     defensive_info = pacai.core.agentinfo.AgentInfo(
-        name = f"{__name__}.DefensiveAgent"
+        name=f"{__name__}.DefensiveAgent"
     )
 
     return [offensive_info, defensive_info]
@@ -34,7 +32,10 @@ def create_team() -> list[pacai.core.agentinfo.AgentInfo]:
 
 class DefensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
     """
-    A capture agent that prioritizes defending its own territory.
+    Simple defensive agent:
+    - Stay on home side.
+    - Chase visible invaders.
+    - If no invaders, drift toward nearest opponent (pressure).
     """
 
     def __init__(
@@ -52,15 +53,12 @@ class DefensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
         # Base defensive weights.
         self.weights['on_home_side'] = 100.0
         self.weights['stopped'] = -100.0
-        self.weights['reverse'] = -0.5
+        self.weights['reverse'] = -2.0
         self.weights['num_invaders'] = -1000.0
-        self.weights['distance_to_invader'] = -40.0
+        self.weights['distance_to_invader'] = -10.0
 
-        # Patrol toward the center line when no invaders are visible.
-        self.weights['distance_to_home_center'] = -3.0
-
-        # When scared, prefer to increase distance from invaders.
-        self.weights['scared_distance_to_invader'] = 25.0
+        # When no invaders, move a bit toward opponents.
+        self.weights['distance_to_opponent'] = -1.0
 
         if override_weights is None:
             override_weights = {}
@@ -77,7 +75,11 @@ class DefensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
 
 class OffensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
     """
-    A capture agent that prioritizes offense on the opponent side.
+    Simple offensive agent (Reflex-style):
+    - Maximize score.
+    - Move toward nearest food.
+    - Avoid getting too close to ghosts.
+    - Penalize stopping and tight back-and-forth reversals to reduce loops.
     """
 
     def __init__(
@@ -91,42 +93,29 @@ class OffensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
         self._distances: pacai.search.distance.DistancePreComputer = (
             pacai.search.distance.DistancePreComputer()
         )
-        self._last_food_count: int | None = None
 
-        # Base offensive weights.
+        # Base offensive weights (tuned to reduce looping).
+        self.weights['score'] = 100.0
 
-        # Care a lot about overall score.
-        self.weights['score'] = 125.0
-        # Smart food choice (closer food is strongly preferred).
-        self.weights['distance_to_food'] = -4.5
-        # Movement smoothness.
-        self.weights['stopped'] = -50.0
-        # Allow backtracking for safety.
-        self.weights['reverse'] = -0.5
+        # Smart food choice: nearer food is better.
+        self.weights['distance_to_food'] = -2.0
 
-        # Ghost avoidance.
-        # Positive weight means larger distance is better.
-        self.weights['ghost_too_close'] = 50.0
-        # Extra penalty when very close (moderate spike).
-        self.weights['distance_to_ghost_squared'] = -1.5
-        self.weights['distance_to_home_if_ghost_close'] = -9.0
+        # Movement smoothness / anti-loop.
+        self.weights['stopped'] = -150.0
+        self.weights['reverse'] = -4.0
 
-        # Capsule logic.
-        self.weights['distance_to_capsule'] = -2.0
-        # Extra pull toward capsule when ghost is close.
-        self.weights['escape_capsule_distance'] = -9.0
+        # Ghost avoidance:
+        # ghost_too_close is 1 when a ghost is within GHOST_IGNORE_RANGE.
+        self.weights['ghost_too_close'] = -200.0
+        # Mild penalty for being generally closer to ghosts.
+        self.weights['distance_to_ghost_squared'] = -0.1
 
-        # In general, being on home side is slightly bad for an offensive agent.
-        self.weights['on_home_side'] = -2.0
+        # On home side is slightly bad for an offensive agent.
+        self.weights['on_home_side'] = -5.0
 
-        # Prefer food that is quick to grab and quick to return.
-        self.weights['food_return_cost'] = -2.5
-
-        # Additional pressure when multiple ghosts are close.
-        self.weights['ghost_too_close'] = -35.0
-
-        # Strong pull to finish the final pellet.
-        self.weights['last_food'] = 150.0
+        # Keep a tiny bias to eat remaining food and capsules.
+        self.weights['num_food'] = -3.0
+        self.weights['num_capsules'] = -2.0
 
         if override_weights is None:
             override_weights = {}
@@ -139,55 +128,6 @@ class OffensiveAgent(pacai.agents.greedy.GreedyFeatureAgent):
         Precompute distances for this board at the start of the game.
         """
         self._distances.compute(initial_state.board)
-        self._last_food_count = None
-
-    def get_action(self, state: pacai.core.gamestate.GameState) -> pacai.core.action.Action:
-        """
-        Log food/capsule counts once per real turn (not per successor).
-        """
-        food_count = len(state.get_food(agent_index = self.agent_index))
-        # Count only opponent-side capsules.
-        capsule_count = 0
-        for cap_pos in state.board.get_marker_positions(pacai.pacman.board.MARKER_CAPSULE):
-            if (state._team_side(position = cap_pos) != state._team_modifier(agent_index = self.agent_index)):
-                capsule_count += 1
-
-        total_targets = food_count + capsule_count
-        if (self._last_food_count is None):
-            self._last_food_count = total_targets
-        elif (total_targets < self._last_food_count):
-            self._last_food_count = total_targets
-
-        # If exactly one edible target remains, log it and greedily move toward it.
-        remaining_food = state.get_food(agent_index = self.agent_index)
-        if (total_targets == 1) and (len(remaining_food) == 1):
-            only_food = next(iter(remaining_food))
-
-            legal_actions = state.get_legal_actions()
-            if (pacai.core.action.STOP in legal_actions and len(legal_actions) > 1):
-                legal_actions.remove(pacai.core.action.STOP)
-
-            best_actions: list[pacai.core.action.Action] = []
-            best_distance: int | None = None
-
-            for action in legal_actions:
-                succ = state.generate_successor(action, self.rng)
-                succ_pos = succ.get_agent_position(self.agent_index)
-                if succ_pos is None:
-                    continue
-                d = self._distances.get_distance(succ_pos, only_food)
-                if d is None:
-                    continue
-                if (best_distance is None) or (d < best_distance):
-                    best_distance = d
-                    best_actions = [action]
-                elif d == best_distance:
-                    best_actions.append(action)
-
-            if best_actions:
-                return self.rng.choice(best_actions)
-
-        return super().get_action(state)
 
 
 def _extract_baseline_defensive_features(
@@ -195,155 +135,158 @@ def _extract_baseline_defensive_features(
         action: pacai.core.action.Action,
         agent: pacai.core.agent.Agent | None = None,
         **kwargs: typing.Any) -> pacai.core.features.FeatureDict:
+    """
+    Defensive feature extractor:
+    - on_home_side
+    - stopped
+    - reverse
+    - num_invaders
+    - distance_to_invader
+    - distance_to_opponent (when there are no invaders)
+    """
     agent = typing.cast(DefensiveAgent, agent)
     state = typing.cast(pacai.capture.gamestate.GameState, state)
 
     features: pacai.core.features.FeatureDict = pacai.core.features.FeatureDict()
 
     current_position = state.get_agent_position(agent.agent_index)
-    if (current_position is None):
-        # We are dead and waiting to respawn.
+    if current_position is None:
+        # Dead and waiting to respawn.
         return features
 
-    # Note the side of the board we are on.
-    features['on_home_side'] = int(state.is_ghost(agent_index = agent.agent_index))
+    # Stay on home side as a ghost.
+    features['on_home_side'] = int(state.is_ghost(agent_index=agent.agent_index))
 
-    # Prefer moving over stopping.
+    # Avoid stopping.
     features['stopped'] = int(action == pacai.core.action.STOP)
 
-    # Prefer not turning around.
-    # Remember that the state we get is already a successor, so we have to look two actions back.
+    # Avoid reversing if possible.
     agent_actions = state.get_agent_actions(agent.agent_index)
-    if (len(agent_actions) > 1):
+    if len(agent_actions) > 1:
         features['reverse'] = int(action == state.get_reverse_action(agent_actions[-2]))
     else:
         features['reverse'] = 0
 
-    # We don't like any invaders on our side.
-    invader_positions = state.get_invader_positions(agent_index = agent.agent_index)
+    # Invaders (enemy pacmen on our side).
+    invader_positions = state.get_invader_positions(agent_index=agent.agent_index)
     features['num_invaders'] = len(invader_positions)
 
-    # Hunt down the closest invader!
     if invader_positions:
+        # Chase closest invader.
         distances: list[int] = []
         for inv_pos in invader_positions.values():
             d = agent._distances.get_distance(current_position, inv_pos)
             if d is not None:
                 distances.append(d)
 
-        if distances:
-            features['distance_to_invader'] = min(distances)
-        else:
-            # If no distances could be computed, fall back to 0.
-            features['distance_to_invader'] = 0
+        features['distance_to_invader'] = min(distances) if distances else 0
+        # When invaders exist, we do not care about distance_to_opponent.
+        features['distance_to_opponent'] = 0
     else:
-        # No invaders right now.
         features['distance_to_invader'] = 0
 
-    # patrol if no invaders
-    # compute distance to center of home territory
-    board = state.board
-    mid_x = board.width // 2
-    # if red agent, home is left side; if blue, home is right side
-    # Even agent indexes (modifier -1) are the red team on the left; odds are blue on the right.
-    if state._team_modifier(agent.agent_index) == -1:  # CHANGED: replace missing is_red with team modifier
-        home_center = pacai.core.board.Position(current_position.row, mid_x - 1)  # CHANGED: build Position not tuple
-    else:
-        home_center = pacai.core.board.Position(current_position.row, mid_x + 1)  # CHANGED: build Position not tuple
-
-    d_center = agent._distances.get_distance(current_position, home_center)
-    features['distance_to_home_center'] = d_center if d_center is not None else 0
-
-    if state.is_scared(agent.agent_index) and invader_positions:  # CHANGED: use is_scared (get_agent_state missing)
-        scared_distances: list[int] = []
-        for inv_pos in invader_positions.values():
-            d = agent._distances.get_distance(current_position, inv_pos)
-            if d is not None:
-                scared_distances.append(d)
-
-        if scared_distances:
-            features['scared_distance_to_invader'] = min(scared_distances)
+        # No invaders: lightly pressure nearest opponent (on their side).
+        opponent_positions = state.get_opponent_positions(agent_index=agent.agent_index)
+        if opponent_positions:
+            opp_dists: list[int] = []
+            for opp_pos in opponent_positions.values():
+                d = agent._distances.get_distance(current_position, opp_pos)
+                if d is not None:
+                    opp_dists.append(d)
+            features['distance_to_opponent'] = min(opp_dists) if opp_dists else 0
         else:
-            features['scared_distance_to_invader'] = 0
-    else:
-        features['scared_distance_to_invader'] = 0
+            features['distance_to_opponent'] = 0
 
     return features
+
 
 def _extract_baseline_offensive_features(
         state: pacai.core.gamestate.GameState,
         action: pacai.core.action.Action,
         agent: pacai.core.agent.Agent | None = None,
         **kwargs: typing.Any) -> pacai.core.features.FeatureDict:
+    """
+    Offensive feature extractor:
+    - score
+    - on_home_side
+    - stopped
+    - reverse
+    - distance_to_food
+    - num_food
+    - num_capsules
+    - ghost_too_close
+    - distance_to_ghost_squared
+    """
     agent = typing.cast(OffensiveAgent, agent)
     state = typing.cast(pacai.capture.gamestate.GameState, state)
 
     features: pacai.core.features.FeatureDict = pacai.core.features.FeatureDict()
+
+    # Overall game score (already normalized by capture rules).
     features['score'] = state.get_normalized_score(agent.agent_index)
 
-    # Note the side of the board we are on.
-    features['on_home_side'] = int(state.is_ghost(agent_index = agent.agent_index))
+    # Home side (0 when we are pacman on opponent side, which we like).
+    features['on_home_side'] = int(state.is_ghost(agent_index=agent.agent_index))
 
-    # Prefer moving over stopping.
+    # Avoid stopping.
     features['stopped'] = int(action == pacai.core.action.STOP)
 
-    # Prefer not turning around.
-    # Remember that the state we get is already a successor, so we have to look two actions back.
+    # Avoid reversing (loop breaker).
     agent_actions = state.get_agent_actions(agent.agent_index)
-    if (len(agent_actions) > 1):
+    if len(agent_actions) > 1:
         features['reverse'] = int(action == state.get_reverse_action(agent_actions[-2]))
     else:
         features['reverse'] = 0
 
     current_position = state.get_agent_position(agent.agent_index)
-    if (current_position is None):
+    if current_position is None:
+        # Dead, waiting to respawn.
         return features
 
-    features['on_home_side'] = int(state.is_ghost(agent_index = agent.agent_index))
-
-    food_positions = state.get_food(agent_index = agent.agent_index)
+    # --- Food features ---
+    food_positions = state.get_food(agent_index=agent.agent_index)
     food_list = list(food_positions)
-    features['last_food'] = int(len(food_list) == 1)  # CHANGED: reward grabbing the final pellet
-    if (len(food_list) > 0):
+    features['num_food'] = len(food_list)
+
+    if food_list:
         food_distances = [
             agent._distances.get_distance(current_position, f)
             for f in food_list
             if agent._distances.get_distance(current_position, f) is not None
         ]
-        min_food_dist = min(food_distances) if food_distances else 9999
-        features['distance_to_food'] = min_food_dist
-        if len(food_list) == 1:
-            features['distance_to_food'] = -1000.0
-            features['reverse'] = 0
-            features['stopped'] = 0
-            features["ghost_too_close"] = 0
-            features["distance_to_home_if_ghost_close"] = 0
-            features["distance_to_ghost_squared"] = 0
+        features['distance_to_food'] = min(food_distances) if food_distances else 0
     else:
-        # There is no food left, give a large score.
-        features['distance_to_food'] = 9999
+        # No food left; treat distance_to_food as 0 (doesn't matter anymore).
+        features['distance_to_food'] = 0
 
-    ghost_positions = state.get_nonscared_opponent_positions(agent_index = agent.agent_index)
-    if (len(ghost_positions) > 0):
+    # --- Capsules (just count, no fancy routing) ---
+    # We only care weakly about clearing capsules.
+    capsule_positions = state.board.get_marker_positions(pacai.pacman.board.MARKER_CAPSULE)
+    features['num_capsules'] = len(capsule_positions)
+
+    # --- Ghost avoidance ---
+    ghost_positions = state.get_nonscared_opponent_positions(
+        agent_index=agent.agent_index
+    )
+
+    ghost_too_close = 0
+    ghost_dist_sq = 0.0
+
+    if ghost_positions:
         ghost_distances: list[int] = []
-        for g in ghost_positions.values():
-            d = agent._distances.get_distance(current_position, g)
+        for gpos in ghost_positions.values():
+            d = agent._distances.get_distance(current_position, gpos)
             if d is not None:
                 ghost_distances.append(d)
 
         if ghost_distances:
             d = min(ghost_distances)
-            features["distance_to_ghost_squared"] = d ** 2
-            features["ghost_too_close"] = 1 if d < GHOST_IGNORE_RANGE else 0
-            features["distance_to_home_if_ghost_close"] = 0 if d >= GHOST_IGNORE_RANGE else d
-        else:
-            features["distance_to_ghost_squared"] = 0
-            features["ghost_too_close"] = 0
-            features["distance_to_home_if_ghost_close"] = 0
+            ghost_dist_sq = float(d * d)
+            if d < GHOST_IGNORE_RANGE:
+                ghost_too_close = 1
+    # If no ghosts visible, both stay 0.
 
-    else:
-        features["distance_to_ghost_squared"] = 0
-        features["ghost_too_close"] = 0
-        features["distance_to_home_if_ghost_close"] = 0
+    features['ghost_too_close'] = ghost_too_close
+    features['distance_to_ghost_squared'] = ghost_dist_sq
 
     return features
