@@ -243,17 +243,34 @@ def _extract_baseline_offensive_features(
         # Dead, waiting to respawn.
         return features
 
+    if not hasattr(agent, 'distance_cache') or agent._last_position != current_position:
+        agent.distance_cache = {}
+
+        for i in state.get_food(agent.agent_index):
+            d = agent._distances.get_distance(current_position, i)
+            if d is not None:
+                agent.distance_cache[i] = d
+
+        ghost = state.get_nonscared_opponent_positions(
+            agent_index=agent.agent_index
+        )
+        for i in ghost.values():
+            d = agent._distances.get_distance(current_position, i)
+            if d is not None:
+                agent.distance_cache[i] = d
+        agent._last_position = current_position
+
     # --- Food features ---
     food_positions = state.get_food(agent_index=agent.agent_index)
     food_list = list(food_positions)
     features['num_food'] = len(food_list)
 
     if food_list:
-        food_distances = []
-        for f in food_list:
-            d = agent._distances.get_distance(current_position, f)
-            if d is not None:
-                food_distances.append(d)
+        food_distances = [agent.distance_cache[i] for i in food_list if i in agent.distance_cache]
+        # for f in food_list:
+        #     d = agent._distances.get_distance(current_position, f)
+        #     if d is not None:
+        #         food_distances.append(d)
         features['distance_to_food'] = min(food_distances) if food_distances else 0
     else:
         # No food left; treat distance_to_food as 0 (doesn't matter anymore).
@@ -273,11 +290,11 @@ def _extract_baseline_offensive_features(
     ghost_dist_sq = 0.0
 
     if ghost_positions:
-        ghost_distances: list[int] = []
-        for gpos in ghost_positions.values():
-            d = agent._distances.get_distance(current_position, gpos)
-            if d is not None:
-                ghost_distances.append(d)
+        ghost_distances: list[int] = [agent.distance_cache[i] for i in ghost_positions.values() if i in agent.distance_cache]
+        # for gpos in ghost_positions.values():
+        #     d = agent._distances.get_distance(current_position, gpos)
+        #     if d is not None:
+        #         ghost_distances.append(d)
 
         if ghost_distances:
             d = min(ghost_distances)
