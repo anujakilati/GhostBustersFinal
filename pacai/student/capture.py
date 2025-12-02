@@ -12,6 +12,8 @@ import pacai.search.distance
 GHOST_IGNORE_RANGE: float = 3.0
 
 def manhattan_dist(a, b):
+    if not a or not b: 
+        return None
     return abs(a.row - b.row) + abs(a.col - b.col)
 
 def create_team() -> list[pacai.core.agentinfo.AgentInfo]:
