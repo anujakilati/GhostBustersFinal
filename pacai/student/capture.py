@@ -195,7 +195,7 @@ def _extract_baseline_defensive_features(
         if opponent_positions:
             opp_dists: list[int] = []
             for opp_pos in opponent_positions.values():
-                d = manhattan_dist(current_position, inv_pos)
+                d = manhattan_dist(current_position, opp_pos)
                 # d = agent._distances.get_distance(current_position, opp_pos)
                 if d is not None:
                     opp_dists.append(d)
