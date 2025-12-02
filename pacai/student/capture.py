@@ -11,6 +11,8 @@ import pacai.search.distance
 
 GHOST_IGNORE_RANGE: float = 3.0
 
+def manhattan_dist(a, b):
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 def create_team() -> list[pacai.core.agentinfo.AgentInfo]:
     """
@@ -175,7 +177,8 @@ def _extract_baseline_defensive_features(
         # Chase closest invader.
         distances: list[int] = []
         for inv_pos in invader_positions.values():
-            d = agent._distances.get_distance(current_position, inv_pos)
+            d = manhattan_dist(current_position, inv_pos)
+            # d = agent._distances.get_distance(current_position, inv_pos)
             if d is not None:
                 distances.append(d)
 
@@ -190,7 +193,8 @@ def _extract_baseline_defensive_features(
         if opponent_positions:
             opp_dists: list[int] = []
             for opp_pos in opponent_positions.values():
-                d = agent._distances.get_distance(current_position, opp_pos)
+                d = manhattan_dist(current_position, inv_pos)
+                # d = agent._distances.get_distance(current_position, opp_pos)
                 if d is not None:
                     opp_dists.append(d)
             features['distance_to_opponent'] = min(opp_dists) if opp_dists else 0
@@ -249,11 +253,12 @@ def _extract_baseline_offensive_features(
     features['num_food'] = len(food_list)
 
     if food_list:
-        food_distances = [
-            agent._distances.get_distance(current_position, f)
-            for f in food_list
-            if agent._distances.get_distance(current_position, f) is not None
-        ]
+        food_distances = [manhattan_dist(current_position, f) for f in food_list]
+        # food_distances = [
+        #     agent._distances.get_distance(current_position, f)
+        #     for f in food_list
+        #     if agent._distances.get_distance(current_position, f) is not None
+        # ]
         features['distance_to_food'] = min(food_distances) if food_distances else 0
     else:
         # No food left; treat distance_to_food as 0 (doesn't matter anymore).
@@ -275,9 +280,11 @@ def _extract_baseline_offensive_features(
     if ghost_positions:
         ghost_distances: list[int] = []
         for gpos in ghost_positions.values():
-            d = agent._distances.get_distance(current_position, gpos)
-            if d is not None:
-                ghost_distances.append(d)
+            d = manhattan_dist(current_position, gpos)
+            ghost_distances.append(d)
+            # d = agent._distances.get_distance(current_position, gpos)
+            # if d is not None:
+            #     ghost_distances.append(d)
 
         if ghost_distances:
             d = min(ghost_distances)
