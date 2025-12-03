@@ -243,29 +243,17 @@ def _extract_baseline_offensive_features(
         # Dead, waiting to respawn.
         return features
 
-    if not hasattr(agent, 'food_distance_cache'):
-        agent.food_distance_cache = {}
-
-    current_food = set(state.get_food(agent.agent_index))
-    cached_food = set(agent.food_distance_cache.keys())
-    if current_food != cached_food:
-        agent.food_distance_cache = {}
-        for f in current_food:
-            d = agent._distances.get_distance(current_position, f)
-            if d is not None:
-                agent.food_distance_cache[f] = d
-
     # --- Food features ---
     food_positions = state.get_food(agent_index=agent.agent_index)
     food_list = list(food_positions)
     features['num_food'] = len(food_list)
 
     if food_list:
-        food_distances = [agent.food_distance_cache[i] for i in food_list if i in agent.food_distance_cache]
-        # for f in food_list:
-        #     d = agent._distances.get_distance(current_position, f)
-        #     if d is not None:
-        #         food_distances.append(d)
+        food_distances = []
+        for f in food_list:
+            d = agent._distances.get_distance(current_position, f)
+            if d is not None:
+                food_distances.append(d)
         features['distance_to_food'] = min(food_distances) if food_distances else 0
     else:
         # No food left; treat distance_to_food as 0 (doesn't matter anymore).
@@ -284,18 +272,18 @@ def _extract_baseline_offensive_features(
     ghost_too_close = 0
     ghost_dist_sq = 0.0
 
-    ghost_distances = []
-    for i in ghost_positions.values():
-        d = agent._distances.get_distance(current_position, i)
-        if d is not None:
-            ghost_distances.append(d)
-            
-    if ghost_distances:
+    if ghost_positions:
+        ghost_distances: list[int] = []
+        for gpos in ghost_positions.values():
+            d = agent._distances.get_distance(current_position, gpos)
+            if d is not None:
+                ghost_distances.append(d)
+
+        if ghost_distances:
             d = min(ghost_distances)
             ghost_dist_sq = float(d * d)
             if d < GHOST_IGNORE_RANGE:
                 ghost_too_close = 1
-                
     # If no ghosts visible, both stay 0.
 
     features['ghost_too_close'] = ghost_too_close
